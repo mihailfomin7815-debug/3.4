@@ -19,6 +19,13 @@ class Renderer:
     def __init__(self, screen):
         """Подготовить графические слои, заставку и подписи для окна."""
         self.screen = screen
+        asteroid = pygame.image.load(
+            ASSETS_DIR / "asteroid.png"
+        ).convert_alpha()
+        self.asteroid_sprite = pygame.transform.smoothscale(asteroid, (76, 76))
+        ship = pygame.image.load(ASSETS_DIR / "ship.png").convert_alpha()
+        ship = ship.subsurface(ship.get_bounding_rect()).copy()
+        self.ship_sprite = pygame.transform.smoothscale(ship, (52, 46))
         background = pygame.image.load(ASSETS_DIR / "background.png").convert()
         self.starfield = pygame.transform.smoothscale(
             background, screen.get_size()
@@ -48,7 +55,7 @@ class Renderer:
             f"Счёт: {INITIAL_SCORE}", True, ACCENT_COLOR
         )
 
-    def draw(self, background_offset, show_splash):
+    def draw(self, background_offset, game):
         """Нарисовать фон, счётчики и при необходимости заставку."""
         self.screen.blit(self.starfield, (0, 0))
         left = -int(background_offset)
@@ -63,8 +70,25 @@ class Renderer:
         )
         self.screen.blit(self.score_label, score_rect)
 
-        if show_splash:
+        if game.active:
+            for asteroid in game.asteroids:
+                self._draw_body(self.asteroid_sprite, asteroid)
+            self._draw_body(self.ship_sprite, game.ship)
+        else:
             self._draw_splash()
+
+    def _draw_body(self, sprite, body):
+        """Нарисовать повёрнутый объект и его копии у границ поля."""
+        rotated = pygame.transform.rotate(sprite, -body.angle)
+        width, height = self.screen.get_size()
+        # Угловые копии сохраняют цельное изображение на тороидальном поле.
+        for dx in (-width, 0, width):
+            for dy in (-height, 0, height):
+                rect = rotated.get_rect(
+                    center=(round(body.x + dx), round(body.y + dy))
+                )
+                if rect.colliderect(self.screen.get_rect()):
+                    self.screen.blit(rotated, rect)
 
     def _draw_splash(self):
         """Нарисовать панель запуска в центре окна."""
