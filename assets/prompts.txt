@@ -1,7 +1,0 @@
-Built-in ImageGen
-
-background.png
-Use case: stylized-concept. Asset type: 2D Asteroids arcade game background, landscape 3:2. Create a richly textured deep-space starfield reminiscent of classic RiceRocks arcade artwork. Dark burgundy, rust and amber nebula clouds intertwined with violet and electric blue wisps, many tiny crisp colored stars, one luminous cyan star just left of center with subtle cross-shaped diffraction. Keep much of the scene dark so gray asteroid sprites and neon green HUD remain readable. Full bleed continuous space scene. No planets, rocks, ships, explosions, interface, text, borders or watermark.
-
-asteroid.png (transparent_background=true)
-Use case: stylized-concept. Asset type: single 2D arcade game asteroid sprite. One roughly round irregular gray stony asteroid, centered, fully visible, isolated on genuinely transparent background, square canvas. Deep craters, pitted rugged surface, silver gray ridges, dark charcoal crevices, high contrast compact detail readable when scaled down to 64 pixels. Classic prerendered RiceRocks-style game art. Soft light from upper left, visible detail on lower right. The rock fills about 85 percent of the canvas. No stars, nebula, text, shadow cast on a ground, glow, border or other objects.
