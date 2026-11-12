@@ -1,11 +1,12 @@
 """Отрисовка игровых объектов, заставки и анимации."""
 
+import math
 import random
 from pathlib import Path
 
 import pygame
 
-from .model import INITIAL_LIVES, INITIAL_SCORE
+from .model import EXPLOSION_DURATION, EXPLOSION_FRAMES, EXPLOSION_SIZE
 
 
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
@@ -27,6 +28,13 @@ class Renderer:
         ship = ship.subsurface(ship.get_bounding_rect()).copy()
         self.ship_sprite = pygame.transform.smoothscale(ship, (52, 46))
         self.ship_frames = self._make_ship_frames()
+        self.explosion_sheet = self._make_explosion_sheet()
+        self.explosion_frames = [
+            self.explosion_sheet.subsurface(
+                (index * EXPLOSION_SIZE, 0, EXPLOSION_SIZE, EXPLOSION_SIZE)
+            )
+            for index in range(EXPLOSION_FRAMES)
+        ]
         self.rocket_sprite = pygame.Surface((16, 8), pygame.SRCALPHA)
         pygame.draw.ellipse(self.rocket_sprite, (255, 110, 20), (0, 0, 16, 8))
         pygame.draw.ellipse(self.rocket_sprite, (255, 250, 190), (5, 2, 10, 4))
@@ -47,16 +55,14 @@ class Renderer:
         )
 
         title_font = pygame.font.SysFont("arial,dejavusans", 48, bold=True)
-        label_font = pygame.font.SysFont("arial,dejavusans", 27)
+        self.label_font = pygame.font.SysFont("arial,dejavusans", 27)
         self.title = title_font.render("Астероиды", True, TEXT_COLOR)
-        self.start_label = label_font.render(
+        self.end_title = title_font.render("Игра окончена", True, TEXT_COLOR)
+        self.start_label = self.label_font.render(
             "Нажмите, чтобы начать", True, TEXT_COLOR
         )
-        self.lives_label = label_font.render(
-            f"Жизни: {INITIAL_LIVES}", True, ACCENT_COLOR
-        )
-        self.score_label = label_font.render(
-            f"Счёт: {INITIAL_SCORE}", True, ACCENT_COLOR
+        self.restart_label = self.label_font.render(
+            "Нажмите, чтобы сыграть снова", True, TEXT_COLOR
         )
 
     def draw(self, background_offset, game):
@@ -68,12 +74,6 @@ class Renderer:
             self.asteroid_layer, (left + self.screen.get_width(), 0)
         )
 
-        self.screen.blit(self.lives_label, (24, 20))
-        score_rect = self.score_label.get_rect(
-            topright=(self.screen.get_width() - 24, 20)
-        )
-        self.screen.blit(self.score_label, score_rect)
-
         if game.active:
             for asteroid in game.asteroids:
                 self._draw_body(self.asteroid_sprite, asteroid)
@@ -82,8 +82,30 @@ class Renderer:
             self._draw_body(
                 self.ship_frames[int(game.ship.thrusting)], game.ship
             )
+            if game.protection > 0:
+                shield = pygame.Surface((60, 60), pygame.SRCALPHA)
+                pygame.draw.circle(shield, (90, 210, 255), (30, 30), 28, 1)
+                self._draw_body(shield, game.ship)
+            for explosion in game.explosions:
+                frame = min(
+                    int(explosion.age / EXPLOSION_DURATION * EXPLOSION_FRAMES),
+                    EXPLOSION_FRAMES - 1,
+                )
+                self._draw_body(self.explosion_frames[frame], explosion)
         else:
-            self._draw_splash()
+            self._draw_splash(game.lives == 0)
+
+        lives_label = self.label_font.render(
+            f"Жизни: {game.lives}", True, ACCENT_COLOR
+        )
+        score_label = self.label_font.render(
+            f"Счёт: {game.score}", True, ACCENT_COLOR
+        )
+        self.screen.blit(lives_label, (24, 20))
+        score_rect = score_label.get_rect(
+            topright=(self.screen.get_width() - 24, 20)
+        )
+        self.screen.blit(score_label, score_rect)
 
     def _draw_body(self, sprite, body):
         """Нарисовать повёрнутый объект и его копии у границ поля."""
@@ -98,17 +120,60 @@ class Renderer:
                 if rect.colliderect(self.screen.get_rect()):
                     self.screen.blit(rotated, rect)
 
-    def _draw_splash(self):
+    def _draw_splash(self, game_over):
         """Нарисовать панель запуска в центре окна."""
         self.screen.blit(self.splash_panel, self.splash_rect)
         center_x, center_y = self.splash_rect.center
-        self.screen.blit(
-            self.title, self.title.get_rect(center=(center_x, center_y - 23))
+        title = self.end_title if game_over else self.title
+        self.screen.blit(title, title.get_rect(
+            center=(center_x, center_y - 23)
+        ))
+        label = self.restart_label if game_over else self.start_label
+        self.screen.blit(label, label.get_rect(
+            center=(center_x, center_y + 37)
+        ))
+
+    def _make_explosion_sheet(self):
+        """Собрать горизонтальную ленту тайлов огненного взрыва."""
+        sheet = pygame.Surface(
+            (EXPLOSION_SIZE * EXPLOSION_FRAMES, EXPLOSION_SIZE),
+            pygame.SRCALPHA,
         )
-        self.screen.blit(
-            self.start_label,
-            self.start_label.get_rect(center=(center_x, center_y + 37)),
-        )
+        center = EXPLOSION_SIZE // 2
+        rng = random.Random(23)
+        sparks = [
+            (rng.uniform(0, math.tau), rng.uniform(0.5, 1))
+            for _ in range(18)
+        ]
+        for index in range(EXPLOSION_FRAMES):
+            tile = pygame.Surface(
+                (EXPLOSION_SIZE, EXPLOSION_SIZE), pygame.SRCALPHA
+            )
+            progress = index / (EXPLOSION_FRAMES - 1)
+            radius = int(6 + (center - 9) * progress)
+            alpha = int(255 * (1 - progress))
+            pygame.draw.circle(
+                tile, (125, 85, 255, alpha), (center, center), radius, 3
+            )
+            for angle, distance in sparks:
+                point = (
+                    round(center + math.cos(angle) * radius * distance),
+                    round(center + math.sin(angle) * radius * distance),
+                )
+                pygame.draw.circle(
+                    tile, (255, 100, 25, alpha), point,
+                    max(1, int(12 * (1 - progress))),
+                )
+                pygame.draw.circle(
+                    tile, (255, 225, 100, alpha), point,
+                    max(1, int(6 * (1 - progress))),
+                )
+            pygame.draw.circle(
+                tile, (255, 250, 220, alpha), (center, center),
+                max(1, int(11 * (1 - progress))),
+            )
+            sheet.blit(tile, (index * EXPLOSION_SIZE, 0))
+        return sheet
 
     def _make_ship_frames(self):
         """Подготовить изображения корабля с выключенной и включённой тягой."""

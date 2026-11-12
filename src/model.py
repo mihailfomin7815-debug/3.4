@@ -21,13 +21,19 @@ SHIP_STOP_SPEED = 3  # Порог полной остановки, пиксел�
 ASTEROID_RADIUS = 32  # Радиус столкновения астероида в пикселях.
 ASTEROID_SPEED = (35, 105)  # Диапазон линейной скорости, пиксели в секунду.
 ASTEROID_SPIN = (-70, 70)  # Диапазон угловой скорости, градусы в секунду.
-SPAWN_INTERVAL = 1.2  # Интервал появления астероидов в секундах.
+SPAWN_INTERVAL = 1.2  # Начальный интервал появления астероидов в секундах.
+MIN_SPAWN_INTERVAL = 0.35  # Минимальный интервал появления в секундах.
+SPAWN_RAMP_DURATION = 120  # Время достижения максимальной частоты в секундах.
 MAX_ASTEROIDS = 18  # Максимальное число астероидов на поле.
 SPAWN_DISTANCE = 150  # Минимальное расстояние от корабля при появлении.
 ROCKET_SPEED = 500  # Скорость ракеты в пикселях в секунду.
 ROCKET_RADIUS = 4  # Радиус столкновения ракеты в пикселях.
 ROCKET_RANGE_RATIO = 0.85  # Доля меньшей стороны поля для дальности ракеты.
 FIRE_INTERVAL = 0.2  # Минимальное время между выстрелами в секундах.
+RESPAWN_PROTECTION = 1.5  # Секунды защиты после возрождения.
+EXPLOSION_DURATION = 0.6  # Длительность анимации взрыва в секундах.
+EXPLOSION_FRAMES = 16  # Количество тайлов анимации взрыва.
+EXPLOSION_SIZE = 96  # Размер квадратного тайла взрыва в пикселях.
 
 
 @dataclass
@@ -90,6 +96,18 @@ class Rocket(Body):
         self.remaining = max(0.0, self.remaining - elapsed)
 
 
+@dataclass
+class Explosion(Body):
+    """Хранить положение взрыва и время его анимации."""
+
+    radius: float = 0.0
+    age: float = 0.0
+
+    def update(self, elapsed, size):
+        """Увеличить возраст анимации неподвижного взрыва."""
+        self.age += elapsed
+
+
 def distance_squared(first, second, size):
     """Вычислить квадрат кратчайшего расстояния на тороидальном поле."""
     # Остаток от деления выбирает ближайшую копию объекта за границей поля.
@@ -109,10 +127,23 @@ class Game:
         self.ship = Ship(size[0] / 2, size[1] / 2)
         self.asteroids = []
         self.rockets = []
+        self.explosions = []
         self.lives = INITIAL_LIVES
         self.score = INITIAL_SCORE
         self.spawn_timer = 0.0
         self.fire_timer = 0.0
+        self.protection = 0.0
+        self.elapsed_time = 0.0
+
+    @property
+    def spawn_interval(self):
+        """Вернуть интервал появления с учётом длительности текущей игры."""
+        # Линейно сокращаем паузу за две минуты, затем сохраняем минимум.
+        reduction = (
+            (SPAWN_INTERVAL - MIN_SPAWN_INTERVAL)
+            * self.elapsed_time / SPAWN_RAMP_DURATION
+        )
+        return max(MIN_SPAWN_INTERVAL, SPAWN_INTERVAL - reduction)
 
     def start(self):
         """Начать новую игру с кораблём в центре и исходными счётчиками."""
@@ -120,15 +151,26 @@ class Game:
         self.ship = Ship(self.size[0] / 2, self.size[1] / 2)
         self.asteroids.clear()
         self.rockets.clear()
+        self.explosions.clear()
         self.lives = INITIAL_LIVES
         self.score = INITIAL_SCORE
         self.spawn_timer = 0.0
         self.fire_timer = 0.0
+        self.protection = 0.0
+        self.elapsed_time = 0.0
 
     def update(self, elapsed, turn=0, thrust=False, firing=False):
         """Обновить движение объектов и таймер появления астероидов."""
         if not self.active:
             return
+        self.elapsed_time += elapsed
+        self.protection = max(0.0, self.protection - elapsed)
+        for explosion in self.explosions:
+            explosion.update(elapsed, self.size)
+        self.explosions = [
+            effect for effect in self.explosions
+            if effect.age < EXPLOSION_DURATION
+        ]
         self.ship.steer(elapsed, turn, thrust)
         self.ship.update(elapsed, self.size)
         self.fire_timer = max(0.0, self.fire_timer - elapsed)
@@ -139,10 +181,13 @@ class Game:
         for rocket in self.rockets:
             rocket.update(elapsed, self.size)
         self.rockets = [r for r in self.rockets if r.remaining > 0]
+        self._resolve_collisions()
+        if not self.active:
+            return
         self.spawn_timer -= elapsed
         if self.spawn_timer <= 0:
             self._spawn_asteroid()
-            self.spawn_timer += SPAWN_INTERVAL
+            self.spawn_timer += self.spawn_interval
 
     def fire(self):
         """Выпустить ракету из носа корабля, если завершилась перезарядка."""
@@ -161,6 +206,48 @@ class Game:
         ))
         self.fire_timer = FIRE_INTERVAL
         return True
+
+    def _resolve_collisions(self):
+        """Разрешить попадания ракет и столкновение корабля с астероидом."""
+        surviving_rockets = []
+        for rocket in self.rockets:
+            for index, asteroid in enumerate(self.asteroids):
+                if self._touching(rocket, asteroid):
+                    self.asteroids.pop(index)
+                    self.explosions.append(Explosion(asteroid.x, asteroid.y))
+                    self.score += 1
+                    break
+            else:
+                surviving_rockets.append(rocket)
+        self.rockets = surviving_rockets
+
+        if self.protection > 0:
+            return
+        for index, asteroid in enumerate(self.asteroids):
+            if self._touching(self.ship, asteroid):
+                self.asteroids.pop(index)
+                self.explosions.append(Explosion(asteroid.x, asteroid.y))
+                self._lose_life()
+                break
+
+    def _touching(self, first, second):
+        """Проверить пересечение кругов с учётом перехода через границы."""
+        return distance_squared(first, second, self.size) <= (
+            first.radius + second.radius
+        ) ** 2
+
+    def _lose_life(self):
+        """Возродить корабль или завершить игру при исходном нуле жизней."""
+        if self.lives == 0:
+            self.active = False
+            self.asteroids.clear()
+            self.rockets.clear()
+            self.explosions.clear()
+            return
+        self.lives -= 1
+        self.ship = Ship(self.size[0] / 2, self.size[1] / 2)
+        self.protection = RESPAWN_PROTECTION
+        self.fire_timer = 0.0
 
     def _spawn_asteroid(self):
         """Добавить астероид вдали от корабля при наличии места."""
