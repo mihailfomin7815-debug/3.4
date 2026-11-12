@@ -30,7 +30,7 @@
 ### 1. Клонирование репозитория
 
 ```bash
-git clone https://github.com/mihailfomin7815-debug/3.4.gitgit add .
+git clone https://github.com/mihailfomin7815-debug/3.4.git add .
 ```
 
 Если проект уже находится на компьютере, откройте терминал в его папке.
