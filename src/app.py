@@ -39,8 +39,14 @@ def run():
                     game.start()
 
             accumulator += elapsed
+            keys = pygame.key.get_pressed()
             while accumulator >= PHYSICS_STEP:
-                game.update(PHYSICS_STEP)
+                game.update(
+                    PHYSICS_STEP,
+                    turn=int(keys[pygame.K_RIGHT]) - int(keys[pygame.K_LEFT]),
+                    thrust=bool(keys[pygame.K_UP]),
+                    firing=bool(keys[pygame.K_SPACE]),
+                )
                 accumulator -= PHYSICS_STEP
             background_offset += BACKGROUND_SPEED * elapsed
             background_offset %= screen.get_width()

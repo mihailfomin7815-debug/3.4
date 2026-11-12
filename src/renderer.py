@@ -26,6 +26,10 @@ class Renderer:
         ship = pygame.image.load(ASSETS_DIR / "ship.png").convert_alpha()
         ship = ship.subsurface(ship.get_bounding_rect()).copy()
         self.ship_sprite = pygame.transform.smoothscale(ship, (52, 46))
+        self.ship_frames = self._make_ship_frames()
+        self.rocket_sprite = pygame.Surface((16, 8), pygame.SRCALPHA)
+        pygame.draw.ellipse(self.rocket_sprite, (255, 110, 20), (0, 0, 16, 8))
+        pygame.draw.ellipse(self.rocket_sprite, (255, 250, 190), (5, 2, 10, 4))
         background = pygame.image.load(ASSETS_DIR / "background.png").convert()
         self.starfield = pygame.transform.smoothscale(
             background, screen.get_size()
@@ -73,7 +77,11 @@ class Renderer:
         if game.active:
             for asteroid in game.asteroids:
                 self._draw_body(self.asteroid_sprite, asteroid)
-            self._draw_body(self.ship_sprite, game.ship)
+            for rocket in game.rockets:
+                self._draw_body(self.rocket_sprite, rocket)
+            self._draw_body(
+                self.ship_frames[int(game.ship.thrusting)], game.ship
+            )
         else:
             self._draw_splash()
 
@@ -101,6 +109,20 @@ class Renderer:
             self.start_label,
             self.start_label.get_rect(center=(center_x, center_y + 37)),
         )
+
+    def _make_ship_frames(self):
+        """Подготовить изображения корабля с выключенной и включённой тягой."""
+        idle = pygame.Surface((72, 64), pygame.SRCALPHA)
+        idle.blit(self.ship_sprite, (10, 9))
+        thrust = pygame.Surface((72, 64), pygame.SRCALPHA)
+        pygame.draw.polygon(
+            thrust, (255, 105, 20), [(18, 23), (0, 32), (18, 41)]
+        )
+        pygame.draw.polygon(
+            thrust, (255, 245, 160), [(18, 27), (5, 32), (18, 37)]
+        )
+        thrust.blit(self.ship_sprite, (10, 9))
+        return idle, thrust
 
     def _make_asteroid_layer(self):
         """Создать полупрозрачный слой, повторяемый по горизонтали."""
