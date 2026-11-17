@@ -64,6 +64,35 @@ class Renderer:
         self.restart_label = self.label_font.render(
             "Нажмите, чтобы сыграть снова", True, TEXT_COLOR
         )
+        hint_font = pygame.font.SysFont("arial,dejavusans", 18)
+        self.controls_hint = hint_font.render(
+            "W / ↑ — тяга    A D / ← → — поворот    S / ↓ — тормоз"
+            "    Пробел — огонь    R — рестарт    Esc — меню",
+            True, TEXT_COLOR,
+        )
+        self.menu_rect = pygame.Rect(0, 0, 400, 340)
+        self.menu_rect.center = screen.get_rect().center
+        self.menu_buttons = {}
+        self.menu_labels = {}
+        for index, (action, text) in enumerate((
+            ("resume", "Продолжить"),
+            ("restart", "Рестарт"),
+            ("exit", "Выход"),
+        )):
+            self.menu_buttons[action] = pygame.Rect(
+                self.menu_rect.left + 40,
+                self.menu_rect.top + 100 + index * 62,
+                320, 48,
+            )
+            self.menu_labels[action] = self.label_font.render(
+                text, True, TEXT_COLOR
+            )
+        self.menu_title = title_font.render("Пауза", True, TEXT_COLOR)
+        self.menu_hint = hint_font.render(
+            "Esc — продолжить    R — начать заново", True, TEXT_COLOR
+        )
+        self.menu_shade = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+        self.menu_shade.fill((0, 0, 0, 170))
 
     def draw(self, background_offset, game):
         """Нарисовать фон, счётчики и при необходимости заставку."""
@@ -106,6 +135,34 @@ class Renderer:
             topright=(self.screen.get_width() - 24, 20)
         )
         self.screen.blit(score_label, score_rect)
+        self.screen.blit(self.controls_hint, self.controls_hint.get_rect(
+            midbottom=(
+                self.screen.get_width() // 2, self.screen.get_height() - 8
+            )
+        ))
+        if game.paused:
+            self._draw_menu()
+
+    def _draw_menu(self):
+        """Нарисовать меню паузы поверх неподвижного игрового поля."""
+        self.screen.blit(self.menu_shade, (0, 0))
+        pygame.draw.rect(self.screen, (25, 14, 72), self.menu_rect)
+        pygame.draw.rect(
+            self.screen, (130, 117, 222), self.menu_rect, width=2
+        )
+        self.screen.blit(self.menu_title, self.menu_title.get_rect(
+            center=(self.menu_rect.centerx, self.menu_rect.top + 48)
+        ))
+        mouse = pygame.mouse.get_pos()
+        for action, rect in self.menu_buttons.items():
+            color = (65, 47, 118) if rect.collidepoint(mouse) else (39, 28, 85)
+            pygame.draw.rect(self.screen, color, rect)
+            pygame.draw.rect(self.screen, (130, 117, 222), rect, width=1)
+            label = self.menu_labels[action]
+            self.screen.blit(label, label.get_rect(center=rect.center))
+        self.screen.blit(self.menu_hint, self.menu_hint.get_rect(
+            midbottom=(self.menu_rect.centerx, self.menu_rect.bottom - 12)
+        ))
 
     def _draw_body(self, sprite, body):
         """Нарисовать повёрнутый объект и его копии у границ поля."""

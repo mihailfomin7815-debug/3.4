@@ -17,6 +17,7 @@ SHIP_TURN_SPEED = 210  # Скорость поворота в градусах �
 SHIP_ACCELERATION = 250  # Ускорение тяги в пикселях в секунду за секунду.
 SHIP_MAX_SPEED = 340  # Максимальная скорость корабля.
 SHIP_DRAG = 1.5  # Коэффициент затухания скорости без тяги.
+SHIP_BRAKE_DRAG = 5.0  # Коэффициент затухания при активном торможении.
 SHIP_STOP_SPEED = 3  # Порог полной остановки, пиксели в секунду.
 ASTEROID_RADIUS = 32  # Радиус столкновения астероида в пикселях.
 ASTEROID_SPEED = (35, 105)  # Диапазон линейной скорости, пиксели в секунду.
@@ -29,7 +30,7 @@ SPAWN_DISTANCE = 150  # Минимальное расстояние от кор�
 ROCKET_SPEED = 500  # Скорость ракеты в пикселях в секунду.
 ROCKET_RADIUS = 4  # Радиус столкновения ракеты в пикселях.
 ROCKET_RANGE_RATIO = 0.85  # Доля меньшей стороны поля для дальности ракеты.
-FIRE_INTERVAL = 0.2  # Минимальное время между выстрелами в секундах.
+FIRE_INTERVAL = 0.4  # Минимальное время между выстрелами в секундах.
 RESPAWN_PROTECTION = 1.5  # Секунды защиты после возрождения.
 EXPLOSION_DURATION = 0.6  # Длительность анимации взрыва в секундах.
 EXPLOSION_FRAMES = 16  # Количество тайлов анимации взрыва.
@@ -62,11 +63,11 @@ class Ship(Body):
     radius: float = SHIP_RADIUS
     thrusting: bool = False
 
-    def steer(self, elapsed, turn, thrust):
+    def steer(self, elapsed, turn, thrust, braking=False):
         """Изменить скорость корабля по командам поворота и тяги."""
         self.angular_speed = max(-1, min(1, turn)) * SHIP_TURN_SPEED
-        self.thrusting = thrust
-        if thrust:
+        self.thrusting = thrust and not braking
+        if self.thrusting:
             direction = math.radians(self.angle)
             self.vx += math.cos(direction) * SHIP_ACCELERATION * elapsed
             self.vy += math.sin(direction) * SHIP_ACCELERATION * elapsed
@@ -76,7 +77,8 @@ class Ship(Body):
                 self.vy *= SHIP_MAX_SPEED / speed
         else:
             # Экспоненциальное затухание не зависит от частоты кадров.
-            damping = math.exp(-SHIP_DRAG * elapsed)
+            drag = SHIP_BRAKE_DRAG if braking else SHIP_DRAG
+            damping = math.exp(-drag * elapsed)
             self.vx *= damping
             self.vy *= damping
             if math.hypot(self.vx, self.vy) < SHIP_STOP_SPEED:
@@ -124,6 +126,7 @@ class Game:
         self.size = size
         self.rng = rng if rng is not None else random.Random()
         self.active = False
+        self.paused = False
         self.ship = Ship(size[0] / 2, size[1] / 2)
         self.asteroids = []
         self.rockets = []
@@ -148,6 +151,7 @@ class Game:
     def start(self):
         """Начать новую игру с кораблём в центре и исходными счётчиками."""
         self.active = True
+        self.paused = False
         self.ship = Ship(self.size[0] / 2, self.size[1] / 2)
         self.asteroids.clear()
         self.rockets.clear()
@@ -159,9 +163,11 @@ class Game:
         self.protection = 0.0
         self.elapsed_time = 0.0
 
-    def update(self, elapsed, turn=0, thrust=False, firing=False):
+    def update(
+        self, elapsed, turn=0, thrust=False, firing=False, braking=False
+    ):
         """Обновить движение объектов и таймер появления астероидов."""
-        if not self.active:
+        if not self.active or self.paused:
             return
         self.elapsed_time += elapsed
         self.protection = max(0.0, self.protection - elapsed)
@@ -171,7 +177,7 @@ class Game:
             effect for effect in self.explosions
             if effect.age < EXPLOSION_DURATION
         ]
-        self.ship.steer(elapsed, turn, thrust)
+        self.ship.steer(elapsed, turn, thrust, braking)
         self.ship.update(elapsed, self.size)
         self.fire_timer = max(0.0, self.fire_timer - elapsed)
         if firing:
@@ -191,7 +197,7 @@ class Game:
 
     def fire(self):
         """Выпустить ракету из носа корабля, если завершилась перезарядка."""
-        if not self.active or self.fire_timer > 0:
+        if not self.active or self.paused or self.fire_timer > 0:
             return False
         direction = math.radians(self.ship.angle)
         dx, dy = math.cos(direction), math.sin(direction)
